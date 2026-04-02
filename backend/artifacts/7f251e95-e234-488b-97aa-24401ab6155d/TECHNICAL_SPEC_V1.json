@@ -1,0 +1,128 @@
+```json
+{
+  "system_overview": {
+    "project_short_name": "Calculator",
+    "project_description": "A basic arithmetic calculator for the Autonomous Office Protocol",
+    "scope": "Perform basic arithmetic operations and support arbitrary-precision arithmetic"
+  },
+
+  "components": [
+    {
+      "name": "Calculator Component",
+      "description": "Responsible for performing arithmetic calculations",
+      "interfaces": {
+        "InputInterface": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "num1": {"type": "number"},
+              "operator": {"type": "string", enum": ["+", "-", "*", "/", "^", "**"]},
+              "num2": {"type": "number"}
+            }
+          },
+          "response": {
+            "type": "object",
+            "properties": {
+              "result": {"type": "number"}
+            }
+          }
+        },
+        "OutputInterface": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "result": {"type": "number"}
+            }
+          },
+          "response": {}
+        }
+      }
+    },
+    {
+      "name": "Validator",
+      "description": "Ensures user input meets the calculator component's requirements",
+      "interfaces": {
+        "ValidatorInterface": {
+          "request": {
+            "type": "string"
+          },
+          "response": {
+            "type": "object",
+            "properties": {
+              "isValid": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    }
+  ],
+
+  "data_models": [
+    {
+      "name": "CalculationModel",
+      "fields": {
+        "num1": {"type": "number"},
+        "operator": {"type": "string", enum: ["+", "-", "*", "/", "^", "**"]},
+        "num2": {"type": "number"},
+        "result": {"type": "number"}
+      }
+    }
+  ],
+
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/calculate",
+      "description": "Perform arithmetic calculation"
+    },
+    {
+      "method": "GET",
+      "path": "/healthcheck",
+      "description": "Health check endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/version",
+      "description": "Version information"
+    },
+    {
+      "method": "GET",
+      "path": "/swagger",
+      "description": "API documentation"
+    },
+    {
+      "method": "POST",
+      "path": "/validate",
+      "description": "Validate user input"
+    }
+  ],
+
+  "tech_stack": {
+    "main_language": "TypeScript",
+    "framework": "Node.js",
+    "dependencies": [
+      {
+        "name": "mathjs",
+        "version": "^11.1.0"
+      },
+      {
+        "name": "joi",
+        "version": "^17.6.0"
+      }
+    ],
+    "strict_mode": true,
+    "strict_type_checks": true,
+    "no_any_types": true
+  },
+  "open_questions": [
+    {
+      "title": "How to handle invalid arithmetic operations",
+      "description": "Should the calculator return a special value for invalid operations?"
+    },
+    {
+      "title": "How to persist calculations history",
+      "description": "Do we need an in-memory solution?"
+    }
+  ]
+}
+```

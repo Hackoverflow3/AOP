@@ -1,0 +1,304 @@
+{
+  "components": [
+    {
+      "name": "Calc Service",
+      "description": "Performs complex mathematical calculations on large datasets",
+      "interfaces": [
+        {
+          "type": "gRPC",
+          "service_name": "CalcService",
+          "methods": [
+            {
+              "name": "Calculate",
+              "request": {
+                "calc_job": {
+                  "data": "array of numbers",
+                  "operation": "string (e.g. 'sum', 'average', 'product')"
+                }
+              },
+              "response": {
+                "result": {
+                  "result": "number",
+                  "error": "string (optional)"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Data Storage",
+      "description": "Manages large datasets",
+      "interfaces": [
+        {
+          "type": "RPC",
+          "request": {
+            "input_type": "DataQuery",
+            "payload": {
+              "dataset": "string",
+              "operation": "string (e.g. 'get', 'put', 'delete')"
+            }
+          },
+          "response": {
+            "output_type": "DataResult",
+            "payload": {
+              "data": "array of numbers",
+              "error": "string (optional)"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "API Endpoints",
+      "description": "API Endpoints for Calc and Data",
+      "interfaces": [
+        {
+          "type": "HTTP",
+          "endpoints": [
+            {
+              "method": "POST",
+              "path": "/calc/calculate",
+              "request": {
+                "calc_job": {
+                  "data": "array of numbers",
+                  "operation": "string (e.g. 'sum', 'average', 'product')"
+                }
+              },
+              "response": {
+                "result": {
+                  "result": "number",
+                  "error": "string (optional)"
+                }
+              }
+            },
+            {
+              "method": "POST",
+              "path": "/data",
+              "request": {
+                "data_query": {
+                  "dataset": "string",
+                  "operation": "string (e.g. 'get', 'put', 'delete')"
+                }
+              },
+              "response": {
+                "data_result": {
+                  "data": "array of numbers",
+                  "error": "string (optional)"
+                }
+              }
+            },
+            {
+              "method": "GET",
+              "path": "/data/{dataset}",
+              "request": {
+                "data_query": {
+                  "dataset": "string",
+                  "operation": "string (e.g. 'get', 'put', 'delete')"
+                }
+              },
+              "response": {
+                "data_result": {
+                  "data": "array of numbers",
+                  "error": "string (optional)"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "data_models": [
+    {
+      "name": "CalcJob",
+      "description": "Represents a calcul job",
+      "fields": [
+        {
+          "name": "data",
+          "type": "array of numbers"
+        },
+        {
+          "name": "operation",
+          "type": "string (e.g. 'sum', 'average', 'product')"
+        }
+      ]
+    },
+    {
+      "name": "CalcResult",
+      "description": "Represents the result of a calcul job",
+      "fields": [
+        {
+          "name": "result",
+          "type": "number"
+        },
+        {
+          "name": "error",
+          "type": "string (optional)"
+        }
+      ]
+    },
+    {
+      "name": "DataQuery",
+      "description": "Represents a data query",
+      "fields": [
+        {
+          "name": "dataset",
+          "type": "string"
+        },
+        {
+          "name": "operation",
+          "type": "string (e.g. 'get', 'put', 'delete')"
+        }
+      ]
+    },
+    {
+      "name": "DataResult",
+      "description": "Represents the result of a data query",
+      "fields": [
+        {
+          "name": "data",
+          "type": "array of numbers"
+        },
+        {
+          "name": "error",
+          "type": "string (optional)"
+        }
+      ]
+    },
+    {
+      "name": "APIRequest",
+      "description": "API Request",
+      "fields": [
+        {
+          "name": "calc_job",
+          "type": "CalcJob"
+        },
+        {
+          "name": "data_query",
+          "type": "DataQuery"
+        }
+      ]
+    },
+    {
+      "name": "APIResponse",
+      "description": "API Response",
+      "fields": [
+        {
+          "name": "result",
+          "type": "CalcResult"
+        },
+        {
+          "name": "data_result",
+          "type": "DataResult"
+        }
+      ]
+    }
+  ],
+  "tech_stack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": "3.9"
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "gRPC",
+        "version": "1.33"
+      },
+      {
+        "name": "Flask",
+        "version": "2.0"
+      }
+    ],
+    "databases": [
+      {
+        "name": "Apache Cassandra",
+        "version": "3.11"
+      }
+    ]
+  },
+  "state_machine": {
+    "calc_service": {
+      "initial_state": "idle",
+      "transitions": [
+        {
+          "from": "idle",
+          "to": "processing",
+          "event": "calc_job_received"
+        },
+        {
+          "from": "processing",
+          "to": "done",
+          "event": "calculation_completed"
+        },
+        {
+          "from": "processing",
+          "to": "failed",
+          "event": "calculation_error"
+        }
+      ],
+      "states": {
+        "idle": {
+          "description": "Service is idle, awaiting a calcul job"
+        },
+        "processing": {
+          "description": "Service is processing a calcul job"
+        },
+        "done": {
+          "description": "Service has completed the calcul job"
+        },
+        "failed": {
+          "description": "Service has failed the calcul job"
+        }
+      }
+    },
+    "data_storage": {
+      "initial_state": "idle",
+      "transitions": [
+        {
+          "from": "idle",
+          "to": "processing",
+          "event": "data_query_received"
+        },
+        {
+          "from": "processing",
+          "to": "done",
+          "event": "data_received"
+        },
+        {
+          "from": "processing",
+          "to": "failed",
+          "event": "data_error"
+        }
+      ],
+      "states": {
+        "idle": {
+          "description": "Service is idle, awaiting a data query"
+        },
+        "processing": {
+          "description": "Service is processing a data query"
+        },
+        "done": {
+          "description": "Service has completed the data query"
+        },
+        "failed": {
+          "description": "Service has failed the data query"
+        }
+      }
+    }
+  },
+  "open_questions": [
+    {
+      "text": "How will the data storage service handle concurrent data queries?"
+    },
+    {
+      "text": "Will we need to implement any data validation or sanitization?"
+    },
+    {
+      "text": "Are there any specific use cases that require custom calcul jobs?"
+    }
+  ]
+}
