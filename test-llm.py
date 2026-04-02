@@ -14,8 +14,8 @@ import asyncio
 import httpx
 
 # ── Put your API keys here ─────────────────────────────────────────────────────
-GROQ_API_KEY = "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"
-GEMINI_API_KEY = "AIzaSyBMclVx5wTb1TwJh7ZPtkqxHEjEucLcTY8"
+GROQ_API_KEY = ""
+GEMINI_API_KEY = ""
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GEMINI_MODEL = "gemini-2.0-flash"
