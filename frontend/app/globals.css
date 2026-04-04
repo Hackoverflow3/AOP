@@ -20,6 +20,23 @@ input, button, textarea, select {
   font-family: inherit;
 }
 
+/* Spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Pulse dot */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Fade in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Cloud thought bubble animations */
 @keyframes cloudFloat {
   0%, 100% { transform: translateY(0px); }

@@ -62,7 +62,7 @@ class WarRoom(BaseRoom):
             "Format it as a proper Markdown document with sections: "
             "Overview, Scope, Out of Scope, Risks, Success Criteria."
         )
-        director_final = await director.respond(ctx_director_manifest, [], room_id=self.room_id)
+        director_final = await director.respond(ctx_director_manifest, history, room_id=self.room_id)
         history.append({"role": "assistant", "content": director_final})
         seq += 1
         db.insert_message(self.db_conn, str(uuid.uuid4()), room_run_id, director.name, director_final, seq)

@@ -364,18 +364,6 @@ function Modal({
   );
 }
 
-const iStyle: React.CSSProperties = {
-  width: "100%",
-  height: 40,
-  padding: "0 12px",
-  background: "rgba(255,255,255,.06)",
-  border: "1px solid rgba(139,124,248,.3)",
-  borderRadius: 8,
-  color: "#EAE8F8",
-  fontSize: 13,
-  outline: "none",
-};
-
 // ─── page ─────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -387,7 +375,6 @@ export default function LandingPage() {
   const [texts, setTexts] = useState(AGENTS.map((a) => a.messages[0]));
   const [msgIdx, setMsgIdx] = useState(AGENTS.map(() => 0));
   const [showContact, setShowContact] = useState(false);
-  const [showSignIn, setShowSignIn] = useState(false);
   const [title, setTitle] = useState("");
   const [task, setTask] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -759,24 +746,6 @@ export default function LandingPage() {
             >
               Contact
             </button>
-            <button
-              onClick={() => setShowSignIn(true)}
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#fff",
-                padding: "6px 18px",
-                background: "#6C4FF5",
-                border: "none",
-                borderRadius: 7,
-                cursor: "pointer",
-                boxShadow: "0 2px 10px rgba(108,79,245,.4)",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = ".88")}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-            >
-              Sign in
-            </button>
           </div>
         </nav>
 
@@ -974,35 +943,7 @@ export default function LandingPage() {
             </a>
           </Modal>
         )}
-        {showSignIn && (
-          <Modal title="Sign in" onClose={() => setShowSignIn(false)}>
-            <input placeholder="Email" style={iStyle} />
-            <input
-              placeholder="Password"
-              type="password"
-              style={{ ...iStyle, marginTop: 8 }}
-            />
-            <button
-              style={{
-                width: "100%",
-                height: 40,
-                marginTop: 12,
-                background: "#6C4FF5",
-                border: "none",
-                borderRadius: 8,
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Continue →
-            </button>
-            <p style={{ fontSize: 11, color: "#60588A", marginTop: 12 }}>
-              No account yet? Sessions run locally without one.
-            </p>
-          </Modal>
-        )}
+
       </div>
     </>
   );

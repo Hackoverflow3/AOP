@@ -104,6 +104,13 @@ const ROOM_CAM_IN: Record<string, { pos: [number,number,number]; look: [number,n
 const ROOM_ACCENT_CSS: Record<string, string> = {
   A: '#7B4FD4', B: '#4F7BD4', C: '#1CC8A0', D: '#F5A623', E: '#FFD700',
 }
+const ROOM_ACCENT_RGBA012: Record<string, string> = {
+  A: 'rgba(123,79,212,0.12)', B: 'rgba(79,123,212,0.12)',
+  C: 'rgba(28,200,160,0.12)', D: 'rgba(245,166,35,0.12)', E: 'rgba(255,215,0,0.12)',
+}
+
+// Proper RoomId type — replaces `as any` casts
+type RoomId = 'A' | 'B' | 'C' | 'D' | 'E'
 
 // ─── canvas sprite helpers ────────────────────────────────────────────────────
 
@@ -202,6 +209,119 @@ function makeThoughtDot(color: number): THREE.Mesh {
 
 // (buildAgent procedural geometry removed — agents now loaded via GLTFLoader)
 
+// ─── canvas texture helpers ───────────────────────────────────────────────────
+
+function makeWoodFloorTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = 512; c.height = 512
+  const ctx = c.getContext('2d')!
+  const plankColors = ['#3a2514', '#442c18', '#32200f', '#3e2818']
+  const plankH = 52
+  for (let y = 0; y < 512; y += plankH) {
+    const ci = Math.floor(y / plankH) % plankColors.length
+    ctx.fillStyle = plankColors[ci]
+    ctx.fillRect(0, y, 512, plankH - 1)
+    // Grain lines
+    ctx.strokeStyle = 'rgba(10,4,0,0.18)'
+    ctx.lineWidth = 0.6
+    for (let g = 0; g < 6; g++) {
+      ctx.beginPath()
+      let gx = 0
+      ctx.moveTo(0, y + g * (plankH / 6))
+      for (; gx < 512; gx += 24) ctx.lineTo(gx, y + g * (plankH / 6) + (Math.random() - 0.5) * 2.5)
+      ctx.stroke()
+    }
+    // Plank joint lines (staggered per row)
+    ctx.strokeStyle = 'rgba(8,3,0,0.5)'
+    ctx.lineWidth = 1
+    const offset = (Math.floor(y / plankH) % 2) * 192
+    for (let x = offset; x < 512; x += 192) {
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + plankH - 1); ctx.stroke()
+    }
+  }
+  const tex = new THREE.CanvasTexture(c)
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(3, 2.5)
+  return tex
+}
+
+function makeCeilingTileTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = 256; c.height = 256
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#e8e4da'
+  ctx.fillRect(0, 0, 256, 256)
+  // T-grid suspension system
+  ctx.strokeStyle = 'rgba(148,143,132,0.65)'
+  ctx.lineWidth = 2.5
+  for (const v of [0, 64, 128, 192, 256]) {
+    ctx.beginPath(); ctx.moveTo(v, 0); ctx.lineTo(v, 256); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(0, v); ctx.lineTo(256, v); ctx.stroke()
+  }
+  // Acoustic perforations per tile
+  ctx.fillStyle = 'rgba(160,155,145,0.4)'
+  for (let tx = 0; tx < 4; tx++) {
+    for (let ty = 0; ty < 4; ty++) {
+      for (let i = 0; i < 18; i++) {
+        ctx.beginPath()
+        ctx.arc(tx * 64 + 5 + Math.random() * 54, ty * 64 + 5 + Math.random() * 54, 0.9, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(c)
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(4, 3)
+  return tex
+}
+
+function makeStoneTileTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = 512; c.height = 512
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#181b20'
+  ctx.fillRect(0, 0, 512, 512)
+  // Marble veins
+  ctx.strokeStyle = 'rgba(55,60,72,0.45)'
+  ctx.lineWidth = 1
+  for (let v = 0; v < 4; v++) {
+    ctx.beginPath()
+    ctx.moveTo(Math.random() * 512, 0)
+    for (let sy = 0; sy < 512; sy += 32) ctx.lineTo(Math.random() * 512, sy)
+    ctx.stroke()
+  }
+  // Large format tile grid
+  ctx.strokeStyle = 'rgba(30,33,42,0.95)'
+  ctx.lineWidth = 2
+  for (const v of [0, 128, 256, 384, 512]) {
+    ctx.beginPath(); ctx.moveTo(v, 0); ctx.lineTo(v, 512); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(0, v); ctx.lineTo(512, v); ctx.stroke()
+  }
+  const tex = new THREE.CanvasTexture(c)
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(7, 7)
+  return tex
+}
+
+function makeWallTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = 256; c.height = 256
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#282b35'
+  ctx.fillRect(0, 0, 256, 256)
+  // Subtle painted texture streaks
+  ctx.strokeStyle = 'rgba(255,255,255,0.022)'
+  ctx.lineWidth = 1.2
+  for (let i = 0; i < 28; i++) {
+    const y = Math.random() * 256
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y + (Math.random() - 0.5) * 16); ctx.stroke()
+  }
+  const tex = new THREE.CanvasTexture(c)
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(2, 1)
+  return tex
+}
+
 // ─── room geometry builder ────────────────────────────────────────────────────
 
 interface RoomRefs {
@@ -224,12 +344,12 @@ function buildRoom(
   const wallH = 2.8
   const wallThick = 0.18
 
-  // ── Room floor tile (polished concrete — visible from overhead) ──
+  // ── Room floor (dark walnut wood parquet) ──
+  const woodTex = makeWoodFloorTex()
   const floorMat = new THREE.MeshStandardMaterial({
-    color: 0x1e2238,
-    roughness: 0.38,
-    metalness: 0.18,
-    emissive: accentColor.clone().multiplyScalar(0.025),
+    map: woodTex,
+    roughness: 0.5,
+    metalness: 0.0,
   })
   const roomFloor = new THREE.Mesh(new THREE.PlaneGeometry(dims.w, dims.d), floorMat)
   roomFloor.rotation.x = -Math.PI / 2
@@ -237,24 +357,26 @@ function buildRoom(
   roomFloor.receiveShadow = true
   scene.add(roomFloor)
 
-  // ── Ceiling panel ──
+  // ── Ceiling panel (acoustic tile) ──
+  const ceilTex = makeCeilingTileTex()
   const ceilMat = new THREE.MeshStandardMaterial({
-    color: 0x181a2a,
-    roughness: 0.85,
+    map: ceilTex,
+    roughness: 0.95,
     metalness: 0,
-    emissive: accentColor.clone().multiplyScalar(0.04),
+    emissive: new THREE.Color(0xffffff),
+    emissiveIntensity: 0.05,
   })
   const ceil = new THREE.Mesh(new THREE.PlaneGeometry(dims.w, dims.d), ceilMat)
   ceil.rotation.x = Math.PI / 2
   ceil.position.set(pos.x, wallH, pos.z)
   scene.add(ceil)
 
-  // ── Walls (dark but readable) ──
+  // ── Walls (dark modern office — textured charcoal) ──
+  const wallTex = makeWallTex()
   const wallMat = new THREE.MeshStandardMaterial({
-    color: 0x1c1e30,
-    roughness: 0.85,
+    map: wallTex,
+    roughness: 0.88,
     metalness: 0,
-    emissive: accentColor.clone().multiplyScalar(0.018),
   })
 
   // North wall
@@ -299,12 +421,12 @@ function buildRoom(
 
   // ── Glass partition panels (inner south-facing wall, partial) ──
   const glassMat = new THREE.MeshPhysicalMaterial({
-    color: accentColor.clone().multiplyScalar(0.3),
-    roughness: 0.05,
-    metalness: 0.1,
-    transmission: 0.7,
+    color: new THREE.Color(0xd8e8f8),
+    roughness: 0.06,
+    metalness: 0.0,
+    transmission: 0.85,
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.22,
     side: THREE.DoubleSide,
   })
 
@@ -338,10 +460,9 @@ function buildRoom(
 
   // ── Corner pillars ──
   const pillarMat = new THREE.MeshStandardMaterial({
-    color: 0x252840,
-    roughness: 0.65,
-    metalness: 0.1,
-    emissive: accentColor.clone().multiplyScalar(0.12),
+    color: 0x1c1e24,
+    roughness: 0.35,
+    metalness: 0.55,
   })
   ;[
     [pos.x - dims.w / 2, pos.z - dims.d / 2],
@@ -360,9 +481,9 @@ function buildRoom(
 
   // ── Conference table ──
   const tableMat = new THREE.MeshStandardMaterial({
-    color: 0x4a3728,
-    roughness: 0.72,
-    metalness: 0.08,
+    color: 0x2e1c0c,
+    roughness: 0.38,
+    metalness: 0.04,
   })
   const tableW = dims.w * 0.5
   const tableD = dims.d * 0.35
@@ -374,18 +495,18 @@ function buildRoom(
 
   // Table gloss surface
   const glossMat = new THREE.MeshStandardMaterial({
-    color: 0x6a4d38,
-    roughness: 0.1,
-    metalness: 0.25,
+    color: 0x4a2e18,
+    roughness: 0.04,
+    metalness: 0.28,
     transparent: true,
-    opacity: 0.7,
+    opacity: 0.88,
   })
   const gloss = new THREE.Mesh(new THREE.BoxGeometry(tableW - 0.05, 0.008, tableD - 0.05), glossMat)
   gloss.position.set(pos.x, 0.705, pos.z)
   scene.add(gloss)
 
   // Table legs
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x1e1008, roughness: 0.85 })
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, roughness: 0.3, metalness: 0.7 })
   const legOffsets = [
     [-tableW * 0.42, -tableD * 0.42],
     [tableW * 0.42, -tableD * 0.42],
@@ -404,10 +525,9 @@ function buildRoom(
 
   // ── Chairs around the table ──
   const chairMat = new THREE.MeshStandardMaterial({
-    color: 0x222238,
-    roughness: 0.7,
-    metalness: 0.15,
-    emissive: accentColor.clone().multiplyScalar(0.04),
+    color: 0x1a1c22,
+    roughness: 0.78,
+    metalness: 0.08,
   })
   const chairPositions = [
     { x: pos.x - tableW * 0.55, z: pos.z, ry: Math.PI / 2 },
@@ -476,24 +596,27 @@ function buildRoom(
   sprite.position.set(pos.x, 4.0, pos.z)
   scene.add(sprite)
 
-  // ── Ceiling light fixture (visible panel + warm point light) ──
+  // ── Ceiling LED panel fixtures (2 wide bars) ──
   const fixtureMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    emissive: new THREE.Color(0xffffff),
-    emissiveIntensity: 0.9,
-    roughness: 0.3,
+    emissive: new THREE.Color(0xfff8f0),
+    emissiveIntensity: 1.3,
+    roughness: 0.15,
   })
-  const fixture = new THREE.Mesh(new THREE.BoxGeometry(dims.w * 0.4, 0.05, 0.18), fixtureMat)
-  fixture.position.set(pos.x, wallH - 0.04, pos.z)
-  scene.add(fixture)
+  const fixture1 = new THREE.Mesh(new THREE.BoxGeometry(dims.w * 0.6, 0.03, 0.22), fixtureMat)
+  fixture1.position.set(pos.x, wallH - 0.02, pos.z - dims.d * 0.2)
+  scene.add(fixture1)
+  const fixture2 = new THREE.Mesh(new THREE.BoxGeometry(dims.w * 0.6, 0.03, 0.22), fixtureMat)
+  fixture2.position.set(pos.x, wallH - 0.02, pos.z + dims.d * 0.2)
+  scene.add(fixture2)
 
-  // Warm overhead fill from ceiling fixture
-  const ceilLight = new THREE.PointLight(0xd8d0ff, 0.5, dims.w * 1.4)
-  ceilLight.position.set(pos.x, wallH - 0.1, pos.z)
+  // Warm overhead fill from ceiling fixtures
+  const ceilLight = new THREE.PointLight(0xfff6e8, 1.2, dims.w * 1.9)
+  ceilLight.position.set(pos.x, wallH - 0.08, pos.z)
   scene.add(ceilLight)
 
-  // ── Per-room accent point light (starts at moderate intensity) ──
-  const accentLight = new THREE.PointLight(color, 0.4, 16)
+  // ── Per-room accent point light (subtle, for color identity) ──
+  const accentLight = new THREE.PointLight(color, 0.22, 14)
   accentLight.position.set(pos.x, 2.2, pos.z)
   accentLight.castShadow = false
   scene.add(accentLight)
@@ -537,8 +660,8 @@ function buildRoom(
 // ─── decorative props ─────────────────────────────────────────────────────────
 
 function addDecorativeProps(scene: THREE.Scene) {
-  // Lobby desk
-  const deskMat = new THREE.MeshStandardMaterial({ color: 0x2a1a06, roughness: 0.7 })
+  // Lobby desk — dark walnut reception desk
+  const deskMat = new THREE.MeshStandardMaterial({ color: 0x2a1a08, roughness: 0.32, metalness: 0.04 })
   const desk = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.1, 1.4), deskMat)
   desk.position.set(0, 0.62, 0)
   desk.castShadow = true
@@ -546,7 +669,7 @@ function addDecorativeProps(scene: THREE.Scene) {
   scene.add(desk)
 
   // Desk legs
-  const legM = new THREE.MeshStandardMaterial({ color: 0x1a0e00, roughness: 0.8 })
+  const legM = new THREE.MeshStandardMaterial({ color: 0x1a1a22, roughness: 0.3, metalness: 0.7 })
   ;[
     [-1.35, -0.6],
     [1.35, -0.6],
@@ -679,7 +802,6 @@ function getAgentPositionsInRoom(
 
 export default function RunPage({ params }: { params: { id: string } }) {
   const { events, status } = useSSE(params.id)
-  const bottomRef = useRef<HTMLDivElement>(null)
 
   // Three.js refs
   const mountRef = useRef<HTMLDivElement>(null)
@@ -748,6 +870,23 @@ export default function RunPage({ params }: { params: { id: string } }) {
 
   // Celebration state
   const celebrationRef = useRef({ active: false, t: 0 })
+  const celebrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Pulse RAF IDs (room_done agent pulse — need cleanup on unmount)
+  const pulseFramesRef = useRef<Set<number>>(new Set())
+
+  // Error banner dismiss state
+  const [errorDismissed, setErrorDismissed] = useState(false)
+
+  // Room transition flash overlay (#47)
+  const [roomFlash, setRoomFlash] = useState<{ roomId: string; name: string } | null>(null)
+  const roomFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Download ZIP in-flight state (#50)
+  const [zipDownloading, setZipDownloading] = useState(false)
+
+  // Session done toast (#63)
+  const [showDoneToast, setShowDoneToast] = useState(false)
 
   // Loading overlay — tracks how many of the 4 GLB models have loaded
   const [modelsLoaded, setModelsLoaded] = useState(0)
@@ -770,16 +909,6 @@ export default function RunPage({ params }: { params: { id: string } }) {
     return set
   }, [events])
 
-  const messages = useMemo(() => {
-    return events
-      .filter((ev) => ev.event === 'message')
-      .map((ev) => ({
-        room: ev.room ?? '',
-        agent: ev.agent ?? 'Agent',
-        content: ev.content ?? '',
-      }))
-  }, [events])
-
   const readyArtifacts = useMemo(() => {
     const map: Record<string, string> = {}
     for (const ev of events) {
@@ -798,12 +927,26 @@ export default function RunPage({ params }: { params: { id: string } }) {
     return ev?.content ?? null
   }, [events])
 
-  // ── auto-scroll message list ─────────────────────────────────────────────────
+  // ── beforeunload warning when session is running (#48) ────────────────────────
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (status !== 'running') return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [status])
 
-  // ── Board canvas update helpers ───────────────────────────────────────────
+  // ── session done toast (#63) ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isDone) return
+    setShowDoneToast(true)
+    const t = setTimeout(() => setShowDoneToast(false), 6000)
+    return () => clearTimeout(t)
+  }, [isDone])
+
+  // ── Board canvas — per-agent decision summary ─────────────────────────────
   function updateBoardCanvas(roomId: string) {
     const canvas = boardCanvasesRef.current.get(roomId)
     const texture = boardTexturesRef.current.get(roomId)
@@ -812,66 +955,101 @@ export default function RunPage({ params }: { params: { id: string } }) {
     const ctx = canvas.getContext('2d')!
     const W = canvas.width, H = canvas.height
     const accent = ROOM_ACCENT_CSS[roomId] ?? '#7B7CF8'
-    const msgs = roomMessagesRef.current.get(roomId) ?? []
+    const allMsgs = roomMessagesRef.current.get(roomId) ?? []
+
+    // Build per-agent last message map (their final position/decision)
+    const agentLastMsg = new Map<string, string>()
+    for (const msg of allMsgs) {
+      agentLastMsg.set(msg.agent, msg.content)
+    }
 
     // Background
     ctx.fillStyle = '#06080f'
     ctx.fillRect(0, 0, W, H)
 
     // Header bar
-    ctx.fillStyle = accent + '33'
-    ctx.fillRect(0, 0, W, 46)
+    ctx.fillStyle = accent + '22'
+    ctx.fillRect(0, 0, W, 50)
     ctx.fillStyle = accent
-    ctx.font = 'bold 20px monospace'
+    ctx.font = 'bold 18px monospace'
     ctx.textAlign = 'left'
-    ctx.fillText(ROOM_NAMES_EXT[roomId] ?? roomId, 16, 31)
-    ctx.fillStyle = 'rgba(200,196,240,0.5)'
-    ctx.font = '13px monospace'
+    ctx.fillText(ROOM_NAMES_EXT[roomId] ?? roomId, 16, 32)
+    ctx.fillStyle = 'rgba(200,196,240,0.45)'
+    ctx.font = '11px monospace'
     ctx.textAlign = 'right'
-    ctx.fillText(msgs.length + ' messages', W - 16, 31)
+    ctx.fillText('DECISIONS', W - 16, 32)
     ctx.textAlign = 'left'
 
     // Separator
-    ctx.strokeStyle = accent + '55'
+    ctx.strokeStyle = accent + '44'
     ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(0, 46); ctx.lineTo(W, 46); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(0, 50); ctx.lineTo(W, 50); ctx.stroke()
 
-    // Messages — show last 5
-    const recent = msgs.slice(-5)
-    let y = 64
-    for (const msg of recent) {
-      if (y > H - 20) break
-      const agentColor = FEED_AGENT_COLORS[msg.agent] ?? '#ffffff'
+    if (agentLastMsg.size === 0) {
+      ctx.fillStyle = 'rgba(180,176,240,0.3)'
+      ctx.font = '13px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText('Waiting for agents...', W / 2, H / 2)
+      ctx.textAlign = 'left'
+      texture.needsUpdate = true
+      return
+    }
+
+    // Per-agent decision cards
+    const cardH = Math.min(Math.floor((H - 58) / agentLastMsg.size) - 6, 110)
+    let y = 58
+
+    for (const [agent, content] of agentLastMsg) {
+      const agentColor = FEED_AGENT_COLORS[agent] ?? '#C8C4E4'
+
+      // Card background
+      ctx.fillStyle = agentColor + '12'
+      ctx.beginPath()
+      if (ctx.roundRect) {
+        ctx.roundRect(10, y, W - 20, cardH, 6)
+      } else {
+        ctx.rect(10, y, W - 20, cardH)
+      }
+      ctx.fill()
+
+      // Left accent bar
+      ctx.fillStyle = agentColor
+      ctx.fillRect(10, y, 3, cardH)
 
       // Agent name
       ctx.fillStyle = agentColor
-      ctx.font = 'bold 13px monospace'
-      ctx.fillText('▸ ' + msg.agent, 14, y)
-      y += 17
+      ctx.font = 'bold 12px monospace'
+      ctx.fillText(agent.toUpperCase(), 20, y + 17)
 
-      // Content — word wrap, max 3 lines
-      ctx.fillStyle = 'rgba(218,214,255,0.88)'
-      ctx.font = '12px monospace'
-      const words = msg.content.replace(/\n/g, ' ').split(' ')
+      // Content — word-wrapped, max available lines
+      ctx.fillStyle = 'rgba(220,216,255,0.85)'
+      ctx.font = '11px monospace'
+      const maxWidth = W - 40
+      const lineH = 14
+      const maxLines = Math.floor((cardH - 26) / lineH)
+      const words = content.replace(/\n/g, ' ').split(' ')
       let line = ''
-      let lines = 0
+      let lineCount = 0
+      let ty = y + 30
+
       for (const word of words) {
-        if (lines >= 3) break
+        if (lineCount >= maxLines) break
         const test = line + word + ' '
-        if (ctx.measureText(test).width > W - 28) {
-          ctx.fillText(line.trimEnd(), 14, y)
-          y += 15
+        if (ctx.measureText(test).width > maxWidth) {
+          ctx.fillText(line.trimEnd(), 20, ty)
+          ty += lineH
           line = word + ' '
-          lines++
+          lineCount++
         } else {
           line = test
         }
       }
-      if (lines < 3 && line.trim()) {
-        ctx.fillText(line.trimEnd(), 14, y)
-        y += 15
+      if (lineCount < maxLines && line.trim()) {
+        ctx.fillText(line.trimEnd(), 20, ty)
       }
-      y += 8
+
+      y += cardH + 6
+      if (y > H - cardH) break
     }
 
     texture.needsUpdate = true
@@ -939,7 +1117,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.8
+    renderer.toneMappingExposure = 1.35
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%'
     el.appendChild(renderer.domElement)
@@ -987,22 +1165,19 @@ export default function RunPage({ params }: { params: { id: string } }) {
     composer.addPass(new OutputPass())
     composerRef.current = composer
 
-    // ── Global floor ──────────────────────────────────────────────────────────
+    // ── Global floor (polished dark stone tiles — corridor & lobby) ──────────
+    const stoneTex = makeStoneTileTex()
     const globalFloorMat = new THREE.MeshStandardMaterial({
-      color: 0x151824,
-      roughness: 0.45,
-      metalness: 0.15,
+      map: stoneTex,
+      roughness: 0.22,
+      metalness: 0.1,
+      envMapIntensity: 1.0,
     })
     const globalFloor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), globalFloorMat)
     globalFloor.rotation.x = -Math.PI / 2
     globalFloor.position.y = 0
     globalFloor.receiveShadow = true
     scene.add(globalFloor)
-
-    // Grid helper — very subtle
-    const grid = new THREE.GridHelper(60, 60, 0x232640, 0x181b30)
-    grid.position.y = 0.001
-    scene.add(grid)
 
     // Central lobby glow ring on floor
     const glowMat = new THREE.MeshStandardMaterial({
@@ -1212,15 +1387,15 @@ export default function RunPage({ params }: { params: { id: string } }) {
 
     // ── Lighting ──────────────────────────────────────────────────────────────
 
-    // 1. Hemisphere light — cool sky, warm ground bounce
-    const hemi = new THREE.HemisphereLight(0x3a5080, 0x1a1430, 0.7)
+    // 1. Hemisphere — warm interior ceiling, dark ground bounce
+    const hemi = new THREE.HemisphereLight(0xffe8c8, 0x181820, 0.55)
     scene.add(hemi)
 
-    // 2. Ambient fill — reduces pure black shadows
-    scene.add(new THREE.AmbientLight(0x202840, 0.8))
+    // 2. Ambient fill — warm white eliminates pure-black shadows
+    scene.add(new THREE.AmbientLight(0xfff4e8, 0.7))
 
-    // 3. Main top-down directional — shadows
-    const keyLight = new THREE.DirectionalLight(0xd0d8ff, 0.65)
+    // 3. Main top-down directional — casts soft shadows
+    const keyLight = new THREE.DirectionalLight(0xfff8f0, 0.45)
     keyLight.position.set(4, 22, 8)
     keyLight.castShadow = true
     keyLight.shadow.mapSize.set(2048, 2048)
@@ -1233,20 +1408,22 @@ export default function RunPage({ params }: { params: { id: string } }) {
     keyLight.shadow.bias = -0.0002
     scene.add(keyLight)
 
-    // 4. Subtle warm fill from south — prevents flat backs on agents
-    const fillLight = new THREE.DirectionalLight(0x8a6a40, 0.22)
+    // 4. Warm fill from south — softens agent backs
+    const fillLight = new THREE.DirectionalLight(0xffe4b8, 0.3)
     fillLight.position.set(-8, 6, 14)
     scene.add(fillLight)
 
-    // 5. Lobby overhead — purple-white
-    const lobbyLight = new THREE.PointLight(0x5a4a80, 1.1, 18)
+    // 5. Lobby overhead — warm neutral white
+    const lobbyLight = new THREE.PointLight(0xfff0d8, 0.85, 22)
     lobbyLight.position.set(0, 5, 0)
     scene.add(lobbyLight)
 
     // ── Animate loop ──────────────────────────────────────────────────────────
     let t = 0
+    let destroyed = false
 
     function tick() {
+      if (destroyed) return
       frameRef.current = requestAnimationFrame(tick)
       const delta = clockRef.current.getDelta()
       t += delta
@@ -1362,13 +1539,13 @@ export default function RunPage({ params }: { params: { id: string } }) {
           const mesh = child as THREE.Mesh
           if (mesh.isMesh && mesh.material) {
             const mat = mesh.material as THREE.MeshStandardMaterial
+            // Always keep transparent=true to avoid shader recompile on toggle
+            mat.transparent = true
             if (targetOpacity < 1) {
-              mat.transparent = true
               mat.opacity = THREE.MathUtils.lerp(mat.opacity ?? 1, targetOpacity, 0.1)
             } else if (mat.opacity < 0.99) {
               mat.opacity = THREE.MathUtils.lerp(mat.opacity, 1, 0.1)
             } else {
-              mat.transparent = false
               mat.opacity = 1
             }
           }
@@ -1461,9 +1638,14 @@ export default function RunPage({ params }: { params: { id: string } }) {
     el.addEventListener('click', handleClick)
 
     return () => {
+      destroyed = true
       cancelAnimationFrame(frameRef.current)
       ro.disconnect()
       el.removeEventListener('click', handleClick)
+      pulseFramesRef.current.forEach((id) => cancelAnimationFrame(id))
+      pulseFramesRef.current.clear()
+      if (celebrationTimeoutRef.current) clearTimeout(celebrationTimeoutRef.current)
+      if (roomFlashTimeoutRef.current) clearTimeout(roomFlashTimeoutRef.current)
 
       // Dispose all geometries and materials in scene
       scene.traverse((obj) => {
@@ -1524,6 +1706,11 @@ export default function RunPage({ params }: { params: { id: string } }) {
       // Camera shake on room transition
       cameraShakeRef.current = { active: true, t: 0, intensity: 0.18 }
 
+      // Room transition flash overlay (#47)
+      if (roomFlashTimeoutRef.current) clearTimeout(roomFlashTimeoutRef.current)
+      setRoomFlash({ roomId, name: ROOM_NAMES_EXT[roomId] ?? roomId })
+      roomFlashTimeoutRef.current = setTimeout(() => setRoomFlash(null), 1800)
+
       // Move assigned agents to room positions
       const agents = ROOM_AGENTS[roomId] ?? []
       const positions = getAgentPositionsInRoom(roomId, agents)
@@ -1546,18 +1733,22 @@ export default function RunPage({ params }: { params: { id: string } }) {
         const data = agentMeshesRef.current.get(name)
         if (!data) return
         let pulseT = 0
+        let pulseId: number
         const pulseFn = () => {
           pulseT += 0.016
           const prog = pulseT / 0.4
+          pulseFramesRef.current.delete(pulseId)
           if (prog >= 1) {
             data.group.scale.setScalar(1)
             return
           }
           const s = 1 + Math.sin(prog * Math.PI) * 0.15
           data.group.scale.setScalar(s)
-          requestAnimationFrame(pulseFn)
+          pulseId = requestAnimationFrame(pulseFn)
+          pulseFramesRef.current.add(pulseId)
         }
-        requestAnimationFrame(pulseFn)
+        pulseId = requestAnimationFrame(pulseFn)
+        pulseFramesRef.current.add(pulseId)
       })
     }
 
@@ -1628,7 +1819,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
       })
 
       // Start celebration after agents walk home
-      setTimeout(() => {
+      celebrationTimeoutRef.current = setTimeout(() => {
         celebrationRef.current = { active: true, t: 0 }
       }, 2000)
     }
@@ -1686,7 +1877,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
           }}
         >
           <a
-            href="/"
+            href="/dashboard"
             style={{ display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none' }}
           >
             <div
@@ -1748,31 +1939,73 @@ export default function RunPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
+      {/* ── session done toast (#63) ── */}
+      {showDoneToast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(28,200,160,0.18)', border: '1px solid rgba(28,200,160,0.45)',
+          borderRadius: 10, padding: '12px 24px',
+          display: 'flex', alignItems: 'center', gap: 10,
+          zIndex: 100, animation: 'fadeIn 0.3s ease-out',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}>
+          <span style={{ fontSize: 16 }}>✓</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#1CC8A0' }}>Session complete</span>
+          <a
+            href={`${BACKEND_URL}/artifacts/${params.id}/zip`}
+            download
+            style={{
+              fontSize: 12, color: '#1CC8A0', textDecoration: 'none',
+              border: '1px solid rgba(28,200,160,0.4)', borderRadius: 6,
+              padding: '4px 12px', fontWeight: 600, marginLeft: 4,
+            }}
+          >
+            Download ZIP
+          </a>
+          <button
+            onClick={() => setShowDoneToast(false)}
+            style={{ background: 'none', border: 'none', color: 'rgba(28,200,160,0.6)', cursor: 'pointer', fontSize: 16 }}
+          >×</button>
+        </div>
+      )}
+
       {/* ── error banner ── */}
-      {errorMessage && (
+      {errorMessage && !errorDismissed && (
         <div
           style={{
             background: 'rgba(232,93,64,0.14)',
             border: '1px solid rgba(232,93,64,0.35)',
             borderRadius: 8,
-            padding: '10px 20px',
+            padding: '10px 16px',
             margin: '10px 16px 0',
             fontSize: 13,
             color: '#E85D40',
             flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
           }}
         >
-          Error: {errorMessage}
+          <span style={{ flex: 1 }}>Error: {errorMessage}</span>
+          <button
+            onClick={() => setErrorDismissed(true)}
+            style={{
+              background: 'none', border: 'none', color: '#E85D40',
+              cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px',
+              flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
         </div>
       )}
 
-      {/* ── main split layout ── */}
+      {/* ── main layout — 3D canvas full width ── */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
 
-        {/* ── LEFT 70%: Three.js 3D office ── */}
         <div
           style={{
-            flex: '0 0 70%',
+            flex: 1,
             position: 'relative',
             background: '#070912',
             overflow: 'hidden',
@@ -1780,25 +2013,40 @@ export default function RunPage({ params }: { params: { id: string } }) {
         >
           <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
 
-          {/* Small non-blocking loading indicator — bottom-right corner */}
+          {/* Centered loading overlay until all 3D models are ready (#40, #46, #58) */}
           {modelsLoaded < AGENT_DEFS.length && (
             <div style={{
-              position: 'absolute', bottom: 12, right: 12,
-              background: 'rgba(7,9,18,0.85)',
-              border: '1px solid rgba(139,124,248,0.3)',
-              borderRadius: 8, padding: '6px 12px',
-              display: 'flex', alignItems: 'center', gap: 8,
+              position: 'absolute', inset: 0,
+              background: 'rgba(7,9,18,0.82)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 14,
               zIndex: 20, pointerEvents: 'none',
             }}>
+              {/* Spinner ring */}
               <div style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: '#8B7CF8',
-                boxShadow: '0 0 6px #8B7CF8',
-                animation: 'pulse 1s infinite',
+                width: 36, height: 36, borderRadius: '50%',
+                border: '2.5px solid rgba(139,124,248,0.18)',
+                borderTopColor: '#8B7CF8',
+                animation: 'spin 0.9s linear infinite',
               }} />
-              <span style={{ fontSize: 11, color: '#8B7CF8', fontWeight: 600 }}>
-                Loading agents {modelsLoaded}/{AGENT_DEFS.length}
-              </span>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 13, color: '#8B7CF8', fontWeight: 700 }}>
+                  Loading 3D models ({modelsLoaded}/{AGENT_DEFS.length})
+                </div>
+                <div style={{ fontSize: 11, color: '#44406A', marginTop: 4 }}>
+                  Preparing office scene…
+                </div>
+              </div>
+              {/* Progress dots */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                {AGENT_DEFS.map((_, i) => (
+                  <div key={i} style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: i < modelsLoaded ? '#8B7CF8' : 'rgba(139,124,248,0.2)',
+                    transition: 'background 0.3s',
+                  }} />
+                ))}
+              </div>
             </div>
           )}
 
@@ -1847,41 +2095,51 @@ export default function RunPage({ params }: { params: { id: string } }) {
           >
             {Object.entries(ROOM_NAMES_EXT).map(([roomId, roomName]) => {
               const isActive = activeRoom === roomId
-              const isDoneRoom = completedRooms.has(roomId as any)
-              const color = `#${new THREE.Color(ROOM_COLORS[roomId]).getHexString()}`
+              const isDoneRoom = completedRooms.has(roomId as RoomId)
+              const color = ROOM_ACCENT_CSS[roomId] ?? '#7B6EE8'
+              const ROOM_DESC: Record<string, string> = {
+                A: 'Strategic alignment', B: 'Brainstorming',
+                C: 'Architecture & code', D: 'Review', E: 'Live demo',
+              }
               return (
                 <div
                   key={roomId}
+                  title={`Room ${roomId} — ${ROOM_DESC[roomId] ?? ''}`}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    opacity: isActive ? 1 : isDoneRoom ? 0.7 : 0.4,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: isActive ? `${color}18` : 'transparent',
+                    borderRadius: 5,
+                    padding: isActive ? '3px 7px 3px 5px' : '1px 0',
+                    border: isActive ? `1px solid ${color}44` : '1px solid transparent',
+                    transition: 'all 0.3s',
                   }}
                 >
-                  <div
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 1,
-                      background: color,
-                      boxShadow: isActive ? `0 0 6px ${color}` : 'none',
-                    }}
-                  />
-                  <span
-                    style={{
+                  <div style={{
+                    width: isDoneRoom ? 8 : 6, height: isDoneRoom ? 8 : 6,
+                    borderRadius: isDoneRoom ? '50%' : 1,
+                    background: isDoneRoom ? '#1CC8A0' : color,
+                    boxShadow: isActive ? `0 0 6px ${color}` : 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 6, color: '#fff', fontWeight: 900,
+                    flexShrink: 0,
+                  }}>
+                    {isDoneRoom ? '✓' : ''}
+                  </div>
+                  <div>
+                    <div style={{
                       fontSize: 9,
-                      color: isActive ? color : 'rgba(180,176,220,0.7)',
+                      color: isActive ? color : isDoneRoom ? '#1CC8A0' : 'rgba(180,176,220,0.55)',
                       fontWeight: isActive ? 700 : 500,
-                      letterSpacing: '.04em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    {roomId} · {roomName}
-                  </span>
-                  {isDoneRoom && (
-                    <span style={{ fontSize: 9, color: '#1CC8A0' }}>✓</span>
-                  )}
+                      letterSpacing: '.04em', textTransform: 'uppercase',
+                    }}>
+                      {roomId} · {roomName}
+                    </div>
+                    {isActive && (
+                      <div style={{ fontSize: 8, color: `${color}99`, letterSpacing: '.02em' }}>
+                        {ROOM_DESC[roomId]}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -1937,226 +2195,89 @@ export default function RunPage({ params }: { params: { id: string } }) {
           {cooldownLeft > 0 && (
             <CooldownBanner secondsLeft={cooldownLeft} nextRoom={cooldownNextRoom} />
           )}
-        </div>
 
-        {/* ── RIGHT 30%: message feed ── */}
-        <div
-          style={{
-            flex: '0 0 30%',
-            display: 'flex',
-            flexDirection: 'column',
-            background: '#0D0F1A',
-            borderLeft: '1px solid rgba(123,110,232,0.15)',
-            minHeight: 0,
-            overflow: 'hidden',
-          }}
-        >
-          {/* Feed header */}
-          <div
-            style={{
-              padding: '12px 16px 10px',
-              borderBottom: '1px solid rgba(123,110,232,0.12)',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '.12em',
-                textTransform: 'uppercase',
-                color: '#5A5870',
-              }}
-            >
-              Agent Feed
-            </span>
-            {activeRoom && (
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: `#${new THREE.Color(ROOM_COLORS[activeRoom] ?? 0x7b6ee8).getHexString()}`,
-                  background: `rgba(${new THREE.Color(ROOM_COLORS[activeRoom] ?? 0x7b6ee8).r * 255 | 0},${new THREE.Color(ROOM_COLORS[activeRoom] ?? 0x7b6ee8).g * 255 | 0},${new THREE.Color(ROOM_COLORS[activeRoom] ?? 0x7b6ee8).b * 255 | 0},0.12)`,
-                  borderRadius: 4,
-                  padding: '2px 7px',
-                  letterSpacing: '.04em',
-                }}
-              >
-                Room {activeRoom} — {ROOM_NAMES_EXT[activeRoom]}
-              </span>
-            )}
-          </div>
+          {/* Error dim overlay — scene looks dead when session fails (#45) */}
+          {status === 'error' && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'rgba(7,9,18,0.65)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 14,
+              zIndex: 25,
+            }}>
+              <div style={{ fontSize: 28, opacity: 0.4 }}>⚠</div>
+              <div style={{ fontSize: 14, color: '#E85D40', fontWeight: 700 }}>Session failed</div>
+              <a href="/dashboard" style={{
+                fontSize: 12, color: '#8B7CF8', textDecoration: 'none',
+                border: '1px solid rgba(139,124,248,0.3)', borderRadius: 7,
+                padding: '7px 18px', fontWeight: 600,
+              }}>
+                ← Back to Dashboard
+              </a>
+            </div>
+          )}
 
-          {/* Artifacts strip */}
+          {/* Room transition flash (#47) */}
+          {roomFlash && (
+            <div style={{
+              position: 'absolute', inset: 0, pointerEvents: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 30,
+              animation: 'fadeIn 0.2s ease-out',
+            }}>
+              <div style={{
+                background: 'rgba(10,12,22,0.78)',
+                border: `1px solid ${ROOM_ACCENT_CSS[roomFlash.roomId] ?? '#8B7CF8'}44`,
+                borderRadius: 12,
+                padding: '14px 32px',
+                textAlign: 'center',
+              }}>
+                <div style={{
+                  fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase',
+                  color: ROOM_ACCENT_CSS[roomFlash.roomId] ?? '#8B7CF8',
+                  fontWeight: 700, marginBottom: 4,
+                }}>
+                  Entering
+                </div>
+                <div style={{
+                  fontSize: 20, fontWeight: 800, color: '#EAE8F8',
+                  letterSpacing: '-.01em',
+                }}>
+                  → {roomFlash.name.toUpperCase()}
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Artifacts overlay — bottom-right, appears as rooms complete */}
           {Object.keys(readyArtifacts).length > 0 && (
-            <div
-              style={{
-                padding: '8px 16px',
-                borderBottom: '1px solid rgba(123,110,232,0.10)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
-                flexShrink: 0,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9,
-                  color: '#44406A',
-                  fontWeight: 700,
-                  letterSpacing: '.1em',
-                  textTransform: 'uppercase',
-                }}
-              >
+            <div style={{
+              position: 'absolute', bottom: 52, right: 16,
+              display: 'flex', flexDirection: 'column', gap: 5,
+              zIndex: 20, pointerEvents: 'auto',
+              animation: 'fadeIn 0.3s ease-out',
+            }}>
+              <div style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: '.1em',
+                textTransform: 'uppercase', color: '#44406A', textAlign: 'right',
+                marginBottom: 2,
+              }}>
                 Artifacts
-              </span>
+              </div>
               {Object.entries(readyArtifacts).map(([roomId, filename]) => (
-                <div key={roomId} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: '#8B7CF8',
-                      fontWeight: 600,
-                      minWidth: 16,
-                    }}
-                  >
-                    {roomId}
+                <div key={roomId} style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                  <span style={{
+                    fontSize: 9, color: ROOM_ACCENT_CSS[roomId] ?? '#8B7CF8',
+                    fontWeight: 700, letterSpacing: '.06em',
+                  }}>
+                    {ROOM_NAMES_EXT[roomId] ?? roomId}
                   </span>
                   <DownloadButton
                     filename={filename}
                     sessionId={params.id}
-                    roomId={roomId as any}
+                    roomId={roomId as RoomId}
                   />
                 </div>
               ))}
-            </div>
-          )}
-
-          {/* Messages */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '14px 14px 10px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
-            {messages.length === 0 && (
-              <div
-                style={{
-                  color: '#44406A',
-                  fontSize: 12,
-                  textAlign: 'center',
-                  marginTop: 40,
-                  lineHeight: 1.7,
-                }}
-              >
-                {status === 'connecting'
-                  ? 'Connecting to session…'
-                  : 'Waiting for agents to speak…'}
-              </div>
-            )}
-
-            {messages.map((msg, idx) => {
-              const agentColor = FEED_AGENT_COLORS[msg.agent] ?? FALLBACK_COLOR
-              return (
-                <div
-                  key={idx}
-                  style={{ display: 'flex', flexDirection: 'column', gap: 3 }}
-                >
-                  {/* Agent header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div
-                      style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: '50%',
-                        background: agentColor,
-                        boxShadow: `0 0 5px ${agentColor}88`,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: agentColor,
-                        letterSpacing: '.04em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {msg.agent}
-                    </span>
-                    {msg.room && (
-                      <span style={{ fontSize: 9, color: '#44406A', marginLeft: 'auto' }}>
-                        Room {msg.room}
-                      </span>
-                    )}
-                  </div>
-                  {/* Message bubble */}
-                  <div
-                    style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      border: `0.5px solid ${agentColor}28`,
-                      borderRadius: '0 8px 8px 8px',
-                      padding: '8px 10px',
-                      fontSize: 12,
-                      color: '#C8C4E4',
-                      lineHeight: 1.6,
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {msg.content}
-                  </div>
-                </div>
-              )
-            })}
-
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Download all footer */}
-          {isDone && (
-            <div
-              style={{
-                borderTop: '1px solid rgba(123,110,232,0.14)',
-                padding: '12px 16px',
-                background: 'rgba(18,20,34,0.9)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                flexShrink: 0,
-              }}
-            >
-              <span style={{ fontSize: 12, color: '#1CC8A0', fontWeight: 600 }}>
-                Session complete
-              </span>
-              <a
-                href={`${BACKEND_URL}/artifacts/${params.id}/zip`}
-                download
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  background: 'rgba(28,200,160,0.15)',
-                  border: '0.5px solid rgba(28,200,160,0.45)',
-                  borderRadius: 7,
-                  padding: '6px 14px',
-                  color: '#1CC8A0',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  marginLeft: 'auto',
-                }}
-              >
-                Download All ZIP
-              </a>
             </div>
           )}
         </div>

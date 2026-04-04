@@ -36,8 +36,9 @@ export default function DashboardPage() {
     try {
       const session = await createSession(title.trim(), task.trim())
       router.push(`/run/${session.id}`)
-    } catch {
-      setFormError('Failed to create session. Is the backend running?')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create session. Is the backend running?'
+      setFormError(msg)
       setSubmitting(false)
     }
   }
@@ -142,7 +143,8 @@ export default function DashboardPage() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Session title — e.g. Q4 pricing strategy"
               required
-              style={inputStyle}
+              disabled={submitting}
+              style={{ ...inputStyle, opacity: submitting ? 0.5 : 1 }}
               onFocus={(e) => (e.target.style.borderColor = 'rgba(139,124,248,.65)')}
               onBlur={(e) => (e.target.style.borderColor = 'rgba(139,124,248,.28)')}
             />
@@ -152,12 +154,14 @@ export default function DashboardPage() {
               onChange={(e) => setTask(e.target.value)}
               placeholder="Describe the task in detail — e.g. build a SaaS pricing strategy with competitor analysis and a recommendation…"
               required
+              disabled={submitting}
               rows={4}
               style={{
                 ...inputStyle,
                 resize: 'vertical',
                 minHeight: 90,
                 lineHeight: 1.55,
+                opacity: submitting ? 0.5 : 1,
               }}
               onFocus={(e) => (e.target.style.borderColor = 'rgba(139,124,248,.65)')}
               onBlur={(e) => (e.target.style.borderColor = 'rgba(139,124,248,.28)')}
@@ -202,8 +206,9 @@ export default function DashboardPage() {
               onMouseLeave={(e) => {
                 if (canSubmit) e.currentTarget.style.opacity = '1'
               }}
+            title="Opens the live 3D office view with your AI team"
             >
-              {submitting ? 'Starting…' : 'Start Session →'}
+              {submitting ? 'Starting…' : 'Launch Session →'}
             </button>
           </form>
         </section>
@@ -252,15 +257,39 @@ export default function DashboardPage() {
           {!loading && !loadError && sessions.length === 0 && (
             <div
               style={{
-                fontSize: 13,
-                color: '#44406A',
+                borderRadius: 10,
+                border: '1px dashed rgba(123,110,232,0.22)',
+                padding: '28px 24px',
                 textAlign: 'center',
-                padding: '32px 0',
-                borderRadius: 8,
-                border: '1px dashed rgba(123,110,232,0.18)',
               }}
             >
-              No sessions yet — start one above.
+              <div style={{ fontSize: 13, color: '#5A5870', marginBottom: 16 }}>
+                No sessions yet — start one above.
+              </div>
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 8,
+                textAlign: 'left',
+                background: 'rgba(139,124,248,0.05)',
+                borderRadius: 8, padding: '14px 16px',
+              }}>
+                <div style={{ fontSize: 11, color: '#8B7CF8', fontWeight: 700, letterSpacing: '.08em', marginBottom: 4 }}>
+                  HOW IT WORKS
+                </div>
+                {[
+                  ['War Room', 'Director + Catalyst align on scope and risks'],
+                  ['Ideation Hive', 'All 4 agents brainstorm and propose a system shape'],
+                  ['The Forge', 'Architect designs specs, Dev writes the code'],
+                  ['Observatory', 'Director reviews and produces the final deliverable'],
+                ].map(([room, desc]) => (
+                  <div key={room} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#8B7CF8', marginTop: 4, flexShrink: 0, opacity: 0.6 }} />
+                    <div>
+                      <span style={{ fontSize: 11, color: '#8B7CF8', fontWeight: 700 }}>{room}</span>
+                      <span style={{ fontSize: 11, color: '#44406A' }}> — {desc}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

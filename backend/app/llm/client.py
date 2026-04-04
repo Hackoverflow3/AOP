@@ -1,23 +1,25 @@
 """
 LLM routing:
-  All rooms → Groq (llama-3.3-70b-versatile)
-  Fallback  → Gemini (gemini-2.0-flash)
+  A / B / D → Ollama (local, free, private) → Groq fallback → Gemini fallback
+  C         → Groq (70B reasoning)          → Gemini fallback
 """
-from app.config import settings
 
-ROOM_TO_PROVIDER = {
-    "A": "groq",
-    "B": "groq",
-    "C": "groq",
-    "D": "groq",
-}
+# Rooms that use local Ollama first
+OLLAMA_ROOMS = {"A", "B", "D"}
 
 
 async def complete(room_id: str, messages: list[dict]) -> str:
-    provider = ROOM_TO_PROVIDER.get(room_id, "groq")
+    from app.llm.groq import groq_complete
+    from app.llm.gemini import gemini_complete
+    from app.llm.ollama import ollama_complete
+
+    if room_id in OLLAMA_ROOMS:
+        try:
+            return await ollama_complete(messages)
+        except Exception:
+            pass  # Ollama not running — fall through to Groq
+
     try:
-        from app.llm.groq import groq_complete
         return await groq_complete(messages)
     except Exception:
-        from app.llm.gemini import gemini_complete
         return await gemini_complete(messages)

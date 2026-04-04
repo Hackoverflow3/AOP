@@ -97,7 +97,7 @@ class IdeationHive(BaseRoom):
             "Synthesise the full brainstorm into a BRAINSTORM_LOG.md. "
             "Include sections: Problem Framing, Wild Ideas, System Shape, Feasibility Notes, Key Decisions."
         )
-        director_final = await director.respond(ctx_director_synth, [], room_id=self.room_id)
+        director_final = await director.respond(ctx_director_synth, history, room_id=self.room_id)
         history.append({"role": "assistant", "content": director_final})
         seq += 1
         db.insert_message(self.db_conn, str(uuid.uuid4()), room_run_id, director.name, director_final, seq)
