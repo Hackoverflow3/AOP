@@ -29,11 +29,13 @@ export interface Artifact {
 }
 
 export interface SSEEvent {
-  event: 'room_enter' | 'room_done' | 'message' | 'artifact_ready' | 'session_done' | 'error'
+  event: 'room_enter' | 'room_done' | 'message' | 'artifact_ready' | 'session_done' | 'error' | 'awaiting_approval' | 'cooldown'
   room?: RoomId
   agent?: string
   content?: string
   filename?: string
   /** @deprecated use filename — kept for backwards compat with older backend builds */
   artifact?: string
+  duration?: number
+  approval_content?: string
 }

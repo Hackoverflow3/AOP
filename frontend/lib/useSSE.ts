@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import type { SSEEvent } from './types'
+import { BACKEND_URL } from './config'
 
 export type SSEStatus = 'connecting' | 'running' | 'done' | 'error'
 
@@ -15,7 +16,7 @@ export function useSSE(sessionId: string | null) {
     setEvents([])
     setStatus('connecting')
 
-    const es = new EventSource(`http://localhost:8000/run/${sessionId}`)
+    const es = new EventSource(`${BACKEND_URL}/run/${sessionId}`)
     esRef.current = es
 
     es.onmessage = (e) => {

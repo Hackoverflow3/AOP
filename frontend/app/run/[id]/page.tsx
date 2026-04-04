@@ -10,6 +10,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { useSSE } from '@/lib/useSSE'
 import { AGENT_COLORS } from '@/lib/utils'
 import DownloadButton from '@/components/DownloadButton'
+import ApprovalGate from '@/components/ApprovalGate'
+import CooldownBanner from '@/components/CooldownBanner'
+import { BACKEND_URL } from '@/lib/config'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -85,6 +88,22 @@ const FEED_AGENT_COLORS: Record<string, string> = {
 }
 
 const FALLBACK_COLOR = '#7B6EE8'
+
+const ROOM_ORDER = ['A', 'B', 'C', 'D', 'E']
+
+// Per-room inside camera anchors — position + lookAt when user enters a room
+const ROOM_CAM_IN: Record<string, { pos: [number,number,number]; look: [number,number,number] }> = {
+  A: { pos: [-8,  1.6, -2.0], look: [-8,  1.4, -9.5] },
+  B: { pos: [ 8,  1.6, -2.0], look: [ 8,  1.4, -9.5] },
+  C: { pos: [-8,  1.6,  9.5], look: [-8,  1.4,  2.5] },
+  D: { pos: [ 8,  1.6,  9.5], look: [ 8,  1.4,  2.5] },
+  E: { pos: [ 0,  1.6, 18.5], look: [ 0,  1.4, 10.5] },
+}
+
+// Pre-computed CSS accent colors per room (avoid new THREE.Color in render)
+const ROOM_ACCENT_CSS: Record<string, string> = {
+  A: '#7B4FD4', B: '#4F7BD4', C: '#1CC8A0', D: '#F5A623', E: '#FFD700',
+}
 
 // ─── canvas sprite helpers ────────────────────────────────────────────────────
 
@@ -189,6 +208,9 @@ interface RoomRefs {
   floorMat: THREE.MeshStandardMaterial
   accentLight: THREE.PointLight
   targetIntensity: number
+  boardCanvas: HTMLCanvasElement
+  boardTexture: THREE.CanvasTexture
+  floorMesh: THREE.Mesh
 }
 
 function buildRoom(
@@ -476,7 +498,40 @@ function buildRoom(
   accentLight.castShadow = false
   scene.add(accentLight)
 
-  return { floorMat, accentLight, targetIntensity: 0.4 }
+  // ── Live content board (north wall) ──
+  const boardCanvas = document.createElement('canvas')
+  boardCanvas.width = 1024
+  boardCanvas.height = 512
+  const bctx = boardCanvas.getContext('2d')!
+  bctx.fillStyle = '#06080f'
+  bctx.fillRect(0, 0, 1024, 512)
+  bctx.fillStyle = accentColor.clone().getStyle()
+  bctx.font = 'bold 20px monospace'
+  bctx.fillText(ROOM_LABELS[roomId]?.[0] ?? roomId, 16, 40)
+  bctx.fillStyle = 'rgba(180,176,240,0.5)'
+  bctx.font = '15px monospace'
+  bctx.fillText('Waiting for session to start...', 16, 70)
+
+  const boardTex = new THREE.CanvasTexture(boardCanvas)
+  const boardMat = new THREE.MeshStandardMaterial({
+    map: boardTex,
+    roughness: 0.12,
+    metalness: 0.0,
+    emissive: accentColor.clone().multiplyScalar(0.04),
+  })
+  const boardMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(dims.w * 0.78, 2.0, 0.05),
+    boardMat,
+  )
+  boardMesh.position.set(pos.x, 1.65, pos.z - dims.d / 2 + 0.08)
+  scene.add(boardMesh)
+
+  // Board glow light
+  const boardLight = new THREE.PointLight(color, 0.3, 6)
+  boardLight.position.set(pos.x, 2.0, pos.z - dims.d / 2 + 0.5)
+  scene.add(boardLight)
+
+  return { floorMat, accentLight, targetIntensity: 0.4, boardCanvas, boardTexture: boardTex, floorMesh: roomFloor }
 }
 
 // ─── decorative props ─────────────────────────────────────────────────────────
@@ -653,6 +708,44 @@ export default function RunPage({ params }: { params: { id: string } }) {
   const cameraShakeRef = useRef({ active: false, t: 0, intensity: 0 })
   const baseCameraPos = { x: 0, y: 30, z: 22 }
 
+  // Camera state machine
+  type CamMode = 'overview' | 'transitioning' | 'in_room'
+  const camModeRef = useRef<CamMode>('overview')
+  const camTweenRef = useRef({
+    t: 0, duration: 1.5,
+    fromPos: new THREE.Vector3(),
+    toPos: new THREE.Vector3(),
+    fromLook: new THREE.Vector3(0, 0, 0),
+    toLook: new THREE.Vector3(0, 0, 0),
+    toMode: 'overview' as CamMode,
+  })
+  const activeRoomViewRef = useRef<string | null>(null)
+
+  // Live board canvases
+  const boardCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map())
+  const boardTexturesRef = useRef<Map<string, THREE.CanvasTexture>>(new Map())
+  const roomMessagesRef = useRef<Map<string, Array<{agent: string, content: string}>>>(new Map())
+
+  // Clickable floor meshes (for room entry click detection)
+  const roomFloorMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map())
+
+  // Raycaster
+  const raycasterRef = useRef(new THREE.Raycaster())
+  const mouseRef = useRef(new THREE.Vector2())
+
+  // Cooldown state
+  const [cooldownLeft, setCooldownLeft] = useState(0)
+  const [cooldownNextRoom, setCooldownNextRoom] = useState('')
+  const cooldownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Approval gate state
+  const [pendingApproval, setPendingApproval] = useState<{
+    roomId: string; content: string
+  } | null>(null)
+
+  // Which room the user is currently inside (UI state)
+  const [inRoomView, setInRoomView] = useState<string | null>(null)
+
   // Celebration state
   const celebrationRef = useRef({ active: false, t: 0 })
 
@@ -709,6 +802,126 @@ export default function RunPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // ── Board canvas update helpers ───────────────────────────────────────────
+  function updateBoardCanvas(roomId: string) {
+    const canvas = boardCanvasesRef.current.get(roomId)
+    const texture = boardTexturesRef.current.get(roomId)
+    if (!canvas || !texture) return
+
+    const ctx = canvas.getContext('2d')!
+    const W = canvas.width, H = canvas.height
+    const accent = ROOM_ACCENT_CSS[roomId] ?? '#7B7CF8'
+    const msgs = roomMessagesRef.current.get(roomId) ?? []
+
+    // Background
+    ctx.fillStyle = '#06080f'
+    ctx.fillRect(0, 0, W, H)
+
+    // Header bar
+    ctx.fillStyle = accent + '33'
+    ctx.fillRect(0, 0, W, 46)
+    ctx.fillStyle = accent
+    ctx.font = 'bold 20px monospace'
+    ctx.textAlign = 'left'
+    ctx.fillText(ROOM_NAMES_EXT[roomId] ?? roomId, 16, 31)
+    ctx.fillStyle = 'rgba(200,196,240,0.5)'
+    ctx.font = '13px monospace'
+    ctx.textAlign = 'right'
+    ctx.fillText(msgs.length + ' messages', W - 16, 31)
+    ctx.textAlign = 'left'
+
+    // Separator
+    ctx.strokeStyle = accent + '55'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, 46); ctx.lineTo(W, 46); ctx.stroke()
+
+    // Messages — show last 5
+    const recent = msgs.slice(-5)
+    let y = 64
+    for (const msg of recent) {
+      if (y > H - 20) break
+      const agentColor = FEED_AGENT_COLORS[msg.agent] ?? '#ffffff'
+
+      // Agent name
+      ctx.fillStyle = agentColor
+      ctx.font = 'bold 13px monospace'
+      ctx.fillText('▸ ' + msg.agent, 14, y)
+      y += 17
+
+      // Content — word wrap, max 3 lines
+      ctx.fillStyle = 'rgba(218,214,255,0.88)'
+      ctx.font = '12px monospace'
+      const words = msg.content.replace(/\n/g, ' ').split(' ')
+      let line = ''
+      let lines = 0
+      for (const word of words) {
+        if (lines >= 3) break
+        const test = line + word + ' '
+        if (ctx.measureText(test).width > W - 28) {
+          ctx.fillText(line.trimEnd(), 14, y)
+          y += 15
+          line = word + ' '
+          lines++
+        } else {
+          line = test
+        }
+      }
+      if (lines < 3 && line.trim()) {
+        ctx.fillText(line.trimEnd(), 14, y)
+        y += 15
+      }
+      y += 8
+    }
+
+    texture.needsUpdate = true
+  }
+
+  function renderDemoTerminal(messages: Array<{agent: string, content: string}>) {
+    const canvas = boardCanvasesRef.current.get('E')
+    const texture = boardTexturesRef.current.get('E')
+    if (!canvas || !texture) return
+    const ctx = canvas.getContext('2d')!
+    const W = canvas.width, H = canvas.height
+
+    ctx.fillStyle = '#000a00'
+    ctx.fillRect(0, 0, W, H)
+
+    // Terminal header
+    ctx.fillStyle = '#001400'
+    ctx.fillRect(0, 0, W, 36)
+    ctx.fillStyle = '#00ff41'
+    ctx.font = 'bold 14px monospace'
+    ctx.fillText('AOP DEMO — EXECUTION LOG', 14, 24)
+
+    // Separator
+    ctx.strokeStyle = '#00ff4133'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, 36); ctx.lineTo(W, 36); ctx.stroke()
+
+    let y = 54
+    for (const msg of messages.slice(-8)) {
+      if (y > H - 16) break
+      ctx.fillStyle = '#004d00'
+      ctx.font = '11px monospace'
+      ctx.fillText('$ ' + msg.agent, 14, y)
+      y += 14
+      ctx.fillStyle = '#00cc33'
+      ctx.font = '11px monospace'
+      const lines = msg.content.split('\n').slice(0, 3)
+      for (const line of lines) {
+        ctx.fillText('  ' + line.slice(0, 120), 14, y)
+        y += 14
+      }
+      y += 6
+    }
+
+    // Blinking cursor
+    ctx.fillStyle = '#00ff41'
+    ctx.fillRect(14, y, 8, 13)
+
+    texture.needsUpdate = true
+  }
 
   // ── Three.js scene setup (runs once on mount) ────────────────────────────────
   useEffect(() => {
@@ -824,6 +1037,9 @@ export default function RunPage({ params }: { params: { id: string } }) {
     ROOM_IDS.forEach((roomId) => {
       const refs = buildRoom(scene, roomId)
       roomRefsMap.current.set(roomId, refs)
+      boardCanvasesRef.current.set(roomId, refs.boardCanvas)
+      boardTexturesRef.current.set(roomId, refs.boardTexture)
+      roomFloorMeshesRef.current.set(roomId, refs.floorMesh)
     })
 
     // ── Decorative props ──────────────────────────────────────────────────────
@@ -1187,14 +1403,67 @@ export default function RunPage({ params }: { params: { id: string } }) {
         refs.accentLight.intensity = cur + (target - cur) * 0.06
       })
 
+      // ── Camera tween (room enter/exit) ──
+      if (camModeRef.current === 'transitioning') {
+        const tw = camTweenRef.current
+        tw.t += delta / tw.duration
+        const p = Math.min(tw.t, 1)
+        // easeInOutQuad
+        const eased = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p
+        camera.position.lerpVectors(tw.fromPos, tw.toPos, eased)
+        const lookNow = tw.fromLook.clone().lerp(tw.toLook, eased)
+        camera.lookAt(lookNow)
+        if (p >= 1) {
+          camModeRef.current = tw.toMode
+          camera.position.copy(tw.toPos)
+          camera.lookAt(tw.toLook)
+        }
+      }
+
       composer.render()
     }
 
     tick()
 
+    // ── Room click detection ──
+    const handleClick = (e: MouseEvent) => {
+      if (camModeRef.current !== 'overview') return
+      const rect = el.getBoundingClientRect()
+      mouseRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      mouseRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+      raycasterRef.current.setFromCamera(mouseRef.current, camera)
+
+      const floors = Array.from(roomFloorMeshesRef.current.values())
+      const hits = raycasterRef.current.intersectObjects(floors)
+      if (hits.length > 0) {
+        const hitMesh = hits[0].object as THREE.Mesh
+        for (const [rid, mesh] of roomFloorMeshesRef.current.entries()) {
+          if (mesh === hitMesh) {
+            // Trigger camera fly-in
+            const anchor = ROOM_CAM_IN[rid]
+            if (!anchor) break
+            camTweenRef.current = {
+              t: 0, duration: 1.5,
+              fromPos: camera.position.clone(),
+              toPos: new THREE.Vector3(...anchor.pos),
+              fromLook: new THREE.Vector3(0, 0, 0),
+              toLook: new THREE.Vector3(...anchor.look),
+              toMode: 'in_room',
+            }
+            camModeRef.current = 'transitioning'
+            activeRoomViewRef.current = rid
+            setInRoomView(rid)
+            break
+          }
+        }
+      }
+    }
+    el.addEventListener('click', handleClick)
+
     return () => {
       cancelAnimationFrame(frameRef.current)
       ro.disconnect()
+      el.removeEventListener('click', handleClick)
 
       // Dispose all geometries and materials in scene
       scene.traverse((obj) => {
@@ -1233,6 +1502,11 @@ export default function RunPage({ params }: { params: { id: string } }) {
       roomDoneRef.current.clear()
       activeRoomRef.current = null
       modelsLoadedRef.current = 0
+      if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current)
+      boardCanvasesRef.current.clear()
+      boardTexturesRef.current.clear()
+      roomMessagesRef.current.clear()
+      roomFloorMeshesRef.current.clear()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1295,6 +1569,44 @@ export default function RunPage({ params }: { params: { id: string } }) {
         data.thoughtDot.visible = true
         data.thoughtTimer = 2.0
       }
+
+      // Update that room's live board canvas
+      if (lastEvent.room) {
+        const roomId = lastEvent.room as string
+        const msgs = roomMessagesRef.current.get(roomId) ?? []
+        msgs.push({ agent: lastEvent.agent ?? 'Agent', content: lastEvent.content ?? '' })
+        roomMessagesRef.current.set(roomId, msgs)
+        if (roomId === 'E') {
+          renderDemoTerminal(msgs)
+        } else {
+          updateBoardCanvas(roomId)
+        }
+      }
+    }
+
+    if (lastEvent.event === 'awaiting_approval' && lastEvent.room) {
+      setPendingApproval({
+        roomId: lastEvent.room as string,
+        content: lastEvent.approval_content ?? lastEvent.content ?? '',
+      })
+    }
+
+    if (lastEvent.event === 'cooldown' && lastEvent.duration) {
+      const total = lastEvent.duration as number
+      setCooldownLeft(total)
+      // Find next room (the one after current active)
+      const nextIdx = ROOM_ORDER.indexOf(activeRoomRef.current ?? '') + 1
+      setCooldownNextRoom(ROOM_ORDER[nextIdx] ? ROOM_NAMES_EXT[ROOM_ORDER[nextIdx]] : '')
+      if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current)
+      cooldownIntervalRef.current = setInterval(() => {
+        setCooldownLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(cooldownIntervalRef.current!)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
     }
 
     if (lastEvent.event === 'session_done') {
@@ -1344,6 +1656,17 @@ export default function RunPage({ params }: { params: { id: string } }) {
         overflow: 'hidden',
       }}
     >
+      {/* Approval gate overlay */}
+      {pendingApproval && (
+        <ApprovalGate
+          roomId={pendingApproval.roomId}
+          roomName={ROOM_NAMES_EXT[pendingApproval.roomId] ?? pendingApproval.roomId}
+          content={pendingApproval.content}
+          sessionId={params.id}
+          onApproved={() => setPendingApproval(null)}
+        />
+      )}
+
       {/* ── top nav ── */}
       <div
         style={{
@@ -1563,6 +1886,57 @@ export default function RunPage({ params }: { params: { id: string } }) {
               )
             })}
           </div>
+
+          {/* Exit room button — only visible when inside a room */}
+          {inRoomView && (
+            <button
+              onClick={() => {
+                const anchor = { pos: [baseCameraPos.x, baseCameraPos.y, baseCameraPos.z] as [number,number,number], look: [0,0,0] as [number,number,number] }
+                if (!cameraRef.current) return
+                camTweenRef.current = {
+                  t: 0, duration: 1.2,
+                  fromPos: cameraRef.current.position.clone(),
+                  toPos: new THREE.Vector3(...anchor.pos),
+                  fromLook: new THREE.Vector3(...(ROOM_CAM_IN[inRoomView]?.look ?? [0,0,0])),
+                  toLook: new THREE.Vector3(0, 0, 0),
+                  toMode: 'overview',
+                }
+                camModeRef.current = 'transitioning'
+                activeRoomViewRef.current = null
+                setInRoomView(null)
+              }}
+              style={{
+                position: 'absolute', top: 12, right: 12,
+                background: 'rgba(13,15,26,0.92)',
+                border: '1px solid rgba(139,124,248,0.4)',
+                borderRadius: 8, padding: '7px 14px',
+                color: '#8B7CF8', fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', zIndex: 30,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              ← Office Overview
+            </button>
+          )}
+
+          {/* Click hint — only in overview mode with no room active */}
+          {!inRoomView && (
+            <div style={{
+              position: 'absolute', bottom: 52, left: '50%', transform: 'translateX(-50%)',
+              background: 'rgba(13,15,26,0.7)',
+              border: '1px solid rgba(139,124,248,0.2)',
+              borderRadius: 20, padding: '5px 14px',
+              color: 'rgba(180,176,240,0.6)', fontSize: 10, fontWeight: 600,
+              pointerEvents: 'none', letterSpacing: '.06em',
+            }}>
+              CLICK ANY ROOM TO ENTER
+            </div>
+          )}
+
+          {/* Cooldown banner */}
+          {cooldownLeft > 0 && (
+            <CooldownBanner secondsLeft={cooldownLeft} nextRoom={cooldownNextRoom} />
+          )}
         </div>
 
         {/* ── RIGHT 30%: message feed ── */}
@@ -1763,7 +2137,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
                 Session complete
               </span>
               <a
-                href={`http://localhost:8000/artifacts/${params.id}/zip`}
+                href={`${BACKEND_URL}/artifacts/${params.id}/zip`}
                 download
                 style={{
                   display: 'inline-flex',
