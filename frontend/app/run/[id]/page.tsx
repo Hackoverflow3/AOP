@@ -187,6 +187,7 @@ interface AgentMeshData {
   isMoving: boolean
   thoughtDot: THREE.Mesh
   thoughtTimer: number
+  bobPhase: number   // phase offset so agents don't idle-breathe in sync
 }
 
 // ─── thought dot helper ───────────────────────────────────────────────────────
@@ -1340,24 +1341,30 @@ export default function RunPage({ params }: { params: { id: string } }) {
           let walkAction: THREE.AnimationAction | null = null
 
           animations.forEach((clip) => {
-            const name = clip.name.toLowerCase()
-            if (name.includes('idle') || name.includes('breathing')) {
+            const n = clip.name.toLowerCase()
+            if (n.includes('idle') || n.includes('breath') || n.includes('stand')) {
               idleAction = mixer.clipAction(clip)
-            } else if (name.includes('walk') || name.includes('run')) {
+            } else if (n.includes('walk') || n.includes('run') || n.includes('stride')) {
               walkAction = mixer.clipAction(clip)
             }
           })
 
-          // Fallback: if naming didn't match, use first clip for both
+          // If no explicit idle found, use first clip as idle
           if (!idleAction && animations.length > 0) {
             idleAction = mixer.clipAction(animations[0])
           }
-          if (!walkAction && animations.length > 0) {
-            walkAction = mixer.clipAction(animations[0])
+          // Only assign walkAction if it's a DIFFERENT clip from idle
+          // (never fall back to using idle as walk — that causes twitching)
+          if (!walkAction && animations.length > 1) {
+            // Pick the clip that isn't the idle
+            const nonIdle = animations.find((c) => mixer.clipAction(c) !== idleAction)
+            if (nonIdle) walkAction = mixer.clipAction(nonIdle)
           }
 
-          // Start idle animation
-          if (idleAction) (idleAction as THREE.AnimationAction).play()
+          // Start idle animation looping at natural speed
+          if (idleAction) {
+            (idleAction as THREE.AnimationAction).setEffectiveTimeScale(1.0).play()
+          }
 
           agentMeshesRef.current.set(def.name, {
             group: model,
@@ -1369,6 +1376,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
             isMoving: false,
             thoughtDot: dot,
             thoughtTimer: 0,
+            bobPhase: idx * (Math.PI / 2), // 90° apart — 4 agents breathe out of phase
           })
 
           // Track loading progress
@@ -1475,58 +1483,75 @@ export default function RunPage({ params }: { params: { id: string } }) {
 
         const pos = data.group.position
         const target = data.targetPos
-        const dist = pos.distanceTo(target)
 
-        if (dist > 0.05) {
+        // Flat distance only (ignore y so bob doesn't affect arrival check)
+        const dx = target.x - pos.x
+        const dz = target.z - pos.z
+        const dist = Math.sqrt(dx * dx + dz * dz)
+
+        if (dist > 0.04) {
           // ── Walking ──
-          pos.lerp(target, 0.035)
 
-          // Bobbing up/down to fake footsteps (subtle)
-          pos.y = Math.abs(Math.sin(t * 7)) * 0.03
+          // Constant-speed movement, delta-time aware
+          // Ease in over first 0.6 units, ease out in last 0.5 units
+          const WALK_SPEED = 2.0 // world units / second
+          const speedScale = dist < 0.5
+            ? THREE.MathUtils.smoothstep(dist, 0, 0.5)
+            : 1.0
+          const step = Math.min(WALK_SPEED * speedScale * delta, dist)
+          const invDist = 1 / dist
+          pos.x += dx * invDist * step
+          pos.z += dz * invDist * step
 
-          // Face direction of travel
-          const dir = target.clone().sub(pos)
-          if (dir.lengthSq() > 0.0001) {
-            const angle = Math.atan2(dir.x, dir.z)
-            data.group.rotation.y = THREE.MathUtils.lerp(data.group.rotation.y, angle, 0.15)
+          // Natural footstep vertical bob — smooth sine, no Math.abs
+          // ~1.6 steps/sec at human walking pace
+          pos.y = Math.sin(t * 10.0 + data.bobPhase) * 0.022
+
+          // Smooth rotation to face travel direction — shortest-angle lerp
+          if (dist > 0.12) {
+            const targetAngle = Math.atan2(dx, dz)
+            let dAngle = targetAngle - data.group.rotation.y
+            // Clamp to [-π, π] to always spin the short way
+            while (dAngle > Math.PI) dAngle -= Math.PI * 2
+            while (dAngle < -Math.PI) dAngle += Math.PI * 2
+            data.group.rotation.y += dAngle * Math.min(1, 9 * delta)
           }
 
-          // Slight forward tilt while walking
-          data.group.rotation.x = THREE.MathUtils.lerp(data.group.rotation.x, -0.08, 0.1)
+          // No rotation.x tilt — Mixamo pivot is at hip, forward tilt looks broken
 
-          // Transition to walk animation (speed up if walk clip available)
+          // Transition to walk animation
           if (!data.isMoving) {
             data.isMoving = true
             if (data.walkAction && data.walkAction !== data.idleAction) {
-              data.currentAction?.fadeOut(0.15)
-              data.walkAction.reset().setEffectiveTimeScale(1.4).fadeIn(0.15).play()
+              data.currentAction?.fadeOut(0.18)
+              data.walkAction.reset().setEffectiveTimeScale(1.0).fadeIn(0.18).play()
               data.currentAction = data.walkAction
-            } else if (data.currentAction) {
-              // Speed up idle animation to fake walking pace
-              data.currentAction.setEffectiveTimeScale(2.5)
             }
+            // When there's no separate walk clip, keep idle animation at natural
+            // speed — the position movement already conveys walking clearly
           }
 
           walkingRef.current.add(name)
+
         } else if (data.isMoving) {
-          // ── Just stopped — snap to exact target and switch back to idle ──
+          // ── Arrived — settle at exact target, return to idle ──
           data.isMoving = false
-          pos.copy(target)
+          pos.x = target.x
+          pos.z = target.z
           pos.y = 0
-          data.group.rotation.x = 0
           walkingRef.current.delete(name)
 
           if (data.walkAction && data.walkAction !== data.idleAction) {
-            data.currentAction?.fadeOut(0.2)
-            data.idleAction?.reset().setEffectiveTimeScale(1).fadeIn(0.2).play()
+            data.currentAction?.fadeOut(0.25)
+            data.idleAction?.reset().setEffectiveTimeScale(1.0).fadeIn(0.25).play()
             data.currentAction = data.idleAction
           } else if (data.currentAction) {
-            // Slow back to normal idle speed
-            data.currentAction.setEffectiveTimeScale(1)
+            data.currentAction.setEffectiveTimeScale(1.0)
           }
+
         } else {
-          // Subtle idle breathing bob
-          pos.y = Math.sin(t * 1.2) * 0.008
+          // ── Standing idle — gentle breathing bob, unique phase per agent ──
+          pos.y = Math.sin(t * 1.4 + data.bobPhase) * 0.007
         }
 
         // Proximity fade — agent fades transparent when too close to camera
